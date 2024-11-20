@@ -52,16 +52,14 @@ def rotar_imagen_angulo_0(imagen,angulo,point1,point2):
     return imagen_rotada
 
 def lips_points_labios(imagen):
-    imagen_alterada = imagen.copy()
     lips_points = []
 
     # Detectar caras
-    faces = detector(imagen_alterada)
+    faces = detector(imagen)
 
     # Para cada cara detectada, predecir los puntos clave
     for face in faces:
-
-        landmarks = predictor(imagen_alterada, face)
+        landmarks = predictor(imagen, face)
 
         lips_points = []
 
@@ -108,8 +106,6 @@ def crear_grafica(historial):
     plt.show()
     
 def grafica_dispersion(historial):
-    print(len(historial))
-    
     # Crear un diagrama de dispersión
     plt.figure(figsize=(10, 5))
     plt.scatter(range(len(historial)), historial, c='blue', alpha=0.5, edgecolor='black')
@@ -133,8 +129,6 @@ def grafica_dispersion(historial):
     plt.show()
     
 def grafica_histograma(historial):
-    print(len(historial))
-    
     # Crear un histograma
     plt.figure(figsize=(10, 5))
     plt.hist(historial, bins=30, color='blue', alpha=0.7, edgecolor='black')
@@ -184,7 +178,6 @@ def grafica_histograma_por_D(historial):
         #plt.show()
         i+=1
     
-    
 #####################################################################################################################3
 
 def procesar_video(ruta_video):
@@ -215,17 +208,15 @@ def procesar_video(ruta_video):
         if len(lips_points_antes_rotacion) != len(key_points_interesantes):
             break
 
-        indice_comisura_der = key_points_interesantes.index(54)
         indice_comisura_iz = key_points_interesantes.index(48)
+        indice_comisura_der = key_points_interesantes.index(54)
         
         # Cálculo del ángulo y rotación de la imagen
         angulo = angulo_boca(lips_points_antes_rotacion[indice_comisura_iz], lips_points_antes_rotacion[indice_comisura_der])
         imagen_rotada = rotar_imagen_angulo_0(frame, angulo, lips_points_antes_rotacion[indice_comisura_iz], lips_points_antes_rotacion[indice_comisura_der])
         
-
         # Normalizar los puntos de los labios
         lips_points = lips_points_labios(imagen_rotada)
-        
         
         lips_points_normalizados = normalize_keypoints(lips_points)
         
@@ -272,6 +263,7 @@ def procesar_video(ruta_video):
     cap.release()
     cv2.destroyAllWindows()
     crear_grafica(historial_diferencias)
+    grafica_histograma(historial_diferencias)
     
     print(frames_totales)
     print(frames_sin_omitir)
@@ -325,17 +317,17 @@ def tiempo_real():
     #crear_grafica(historial_puntos)   
     
     crear_grafica(historial_diferencias)
+    grafica_histograma(historial_diferencias)
     
     print(np.array(historial_diferencias))
         
-
 # Ejemplo de uso
 ruta_video_hola_lento = r"Nuevo_codigo\Videos\lento_buenos_dias.mp4"
 ruta_video_hola_rapido = r"Nuevo_codigo\Videos\rapido_buenos_dias.mp4"
 ruta_video_quieto_largo = r"Nuevo_codigo\Videos\quieto_largo.mp4"
 ruta_video_quieto_rapido = r"Nuevo_codigo\Videos\quieto_rapido.mp4"
 
-ruta_video = ruta_video_hola_lento
+ruta_video = ruta_video_quieto_rapido
 procesar_video(ruta_video)
 #tiempo_real()
 
