@@ -22,34 +22,8 @@ cap.set(cv2.CAP_PROP_FPS, 60)
 
 threshold = 1 # Umbral para detectar cambios significativos en los labios
 
-
-def angulo_boca(comisura_labio_izq, comisura_labio_der):
-    dx = comisura_labio_der[0] - comisura_labio_izq[0]
-    dy = comisura_labio_der[1] - comisura_labio_izq[1]
-
-    # Calcula el ángulo en radianes
-    angulo_radianes = math.atan2(dy, dx)
-
-    # Convierte el ángulo a grados
-    angulo_grados = math.degrees(angulo_radianes)
-
-    return angulo_grados
-
-def normalize_keypoints(all_lips_points):
-    all_lips_points = np.array(all_lips_points)
-    min_vals = all_lips_points.min(axis=0)
-    max_vals = all_lips_points.max(axis=0)
-    normalized_points = (all_lips_points - min_vals) / (max_vals - min_vals)
-    return normalized_points
-    
-def rotar_imagen_angulo_0(imagen,angulo,point1,point2):
-    centro_punto_D1 = (point1[0]+point2[0])/2
-    centro_punto_D2 = (point1[1]+point2[1])/2
-    #center = (int((point1[0]+point2[0])//2),int((point1[1]+point2[1])//2))
-    centro = (centro_punto_D1,centro_punto_D2)
-    rotation_matrix = cv2.getRotationMatrix2D(centro, angulo, 1.0)
-    imagen_rotada = cv2.warpAffine(imagen, rotation_matrix, (imagen.shape[1], imagen.shape[0]))
-    return imagen_rotada
+#############################################################
+# Extraccion de datos
 
 def lips_points_labios(imagen):
     lips_points = []
@@ -72,16 +46,40 @@ def lips_points_labios(imagen):
 
     return np.array(lips_points)
 
-def dibujar_labios(lips_points,imagen):
-    for tupla in lips_points:
-        cv2.circle(imagen, (tupla[0], tupla[1]), 1, (0, 255, 0), -1)
-        
-    cv2.imshow("Imagen rotada", imagen)
-    return imagen
+def angulo_boca(comisura_labio_izq, comisura_labio_der):
+    dx = comisura_labio_der[0] - comisura_labio_izq[0]
+    dy = comisura_labio_der[1] - comisura_labio_izq[1]
 
-def diferencia_frame(lips_points_anterior,lips_points_nuevo):
-    return abs(lips_points_anterior-lips_points_nuevo)
+    # Calcula el ángulo en radianes
+    angulo_radianes = math.atan2(dy, dx)
 
+    # Convierte el ángulo a grados
+    angulo_grados = math.degrees(angulo_radianes)
+
+    return angulo_grados
+
+def rotar_imagen_angulo_0(imagen,angulo,point1,point2):
+    centro_punto_D1 = (point1[0]+point2[0])/2
+    centro_punto_D2 = (point1[1]+point2[1])/2
+    #center = (int((point1[0]+point2[0])//2),int((point1[1]+point2[1])//2))
+    centro = (centro_punto_D1,centro_punto_D2)
+    rotation_matrix = cv2.getRotationMatrix2D(centro, angulo, 1.0)
+    imagen_rotada = cv2.warpAffine(imagen, rotation_matrix, (imagen.shape[1], imagen.shape[0]))
+    return imagen_rotada
+
+#############################################################
+# Normalizacion
+
+def normalize_keypoints(all_lips_points):
+    all_lips_points = np.array(all_lips_points)
+    min_vals = all_lips_points.min(axis=0)
+    max_vals = all_lips_points.max(axis=0)
+    normalized_points = (all_lips_points - min_vals) / (max_vals - min_vals)
+    return normalized_points
+    
+
+#############################################################
+# Graficas
 def crear_grafica(historial):
     plt.plot(historial, marker='o', linestyle='-', color='b', label='Cambios entre frames')
 
@@ -101,29 +99,6 @@ def crear_grafica(historial):
         ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\24_key_points\\"
     
     plt.savefig(ruta_graficas + os.path.basename(ruta_video).replace("mp4","png"), dpi=300) 
-
-    # Mostrar la gráfica
-    plt.show()
-    
-def grafica_dispersion(historial):
-    # Crear un diagrama de dispersión
-    plt.figure(figsize=(10, 5))
-    plt.scatter(range(len(historial)), historial, c='blue', alpha=0.5, edgecolor='black')
-    
-    # Etiquetas y título de la gráfica
-    plt.xlabel("Índice")
-    plt.ylabel("Valores")
-    
-    if len(key_points_interesantes) <= 12:
-        plt.title("Dispersión Cambios entre Frames: 12 Key Points")
-        ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\12_key_points\\"
-    else:  
-        plt.title("Dispersión Cambios entre Frames: 24 Key Points")
-        ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\24_key_points\\"
-    
-    # Guardar la gráfica
-    nombre_archivo = "diagrama_dispersion_" + os.path.basename(ruta_video).replace(".mp4", ".png")
-    plt.savefig(ruta_graficas + nombre_archivo, dpi=300)
 
     # Mostrar la gráfica
     plt.show()
@@ -151,34 +126,131 @@ def grafica_histograma(historial):
     # Mostrar el histograma
     plt.show()
     
-def grafica_histograma_por_D(historial):
-    i=0
-    for dimension in historial:
+def dibujar_labios(lips_points,imagen):
+    for tupla in lips_points:
+        cv2.circle(imagen, (tupla[0], tupla[1]), 1, (0, 255, 0), -1)
         
-        # Crear un histograma
-        plt.figure(figsize=(10, 5))
-        plt.hist(dimension, bins=30, color='blue', alpha=0.7, edgecolor='black')
-        
-        # Etiquetas y título del histograma
-        plt.xlabel("Valores")
-        plt.ylabel("Frecuencia")
-        
-        if len(key_points_interesantes) <= 12:
-            plt.title(f"Histograma Punto {key_points_interesantes[i]}cambios entre frames: 12 Key Points")
-            ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\12_key_points\\"
-        else:  
-            plt.title(f"Histograma Punto {key_points_interesantes[i]} cambios entre frames: 24 Key Points")
-            ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\24_key_points\\"
-        
-        # Guardar el histograma
-        nombre_archivo = f"histograma_punto_{key_points_interesantes[i]}" + os.path.basename(ruta_video).replace(".mp4", ".png")
-        plt.savefig(ruta_graficas + nombre_archivo, dpi=300)
+    cv2.imshow("Imagen rotada", imagen)
+    return imagen
 
-        # Mostrar el histograma
-        #plt.show()
-        i+=1
+#####################################################################################################################
+# Manejo DataSet
+
+#############################################################
+# Extraer Caracteristicas 
+
+def split_video_to_labels_and_keypoints(video_path, intervals_file):
+    # Leer el archivo de intervalos
+    with open(intervals_file, 'r') as file:
+        lines = file.readlines()
+
+    # Cargar el video
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: No se pudo abrir el video {video_path}")
+        raise Exception("El video no se ha podido abrir correctamente")
+
+    # Lista para almacenar los datos estructurados
+    labels = []
+    labels_key_points = []
     
-#####################################################################################################################3
+    antiguo_label = None
+
+    for line in lines:
+        start_frame, end_frame, label = line.strip().split()
+        start_frame, end_frame = math.ceil(int(start_frame) / 1000), math.ceil(int(end_frame) / 1000)
+
+        # Establecer la posición inicial del frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+        print(f"Procesando frames para la etiqueta '{label}' desde el frame {start_frame} hasta {end_frame}...")
+        
+        if antiguo_label != label:
+            labels.append(label)
+            if antiguo_label != None:
+                labels_key_points.append(np.array(key_points))
+            key_points = []
+            antiguo_label = label
+            
+        # Recorrer los frames del intervalo
+        for frame_num in range(start_frame, end_frame):
+            ret, frame = cap.read()
+            if not ret:
+                raise Exception(f"El video {video_path} no tiene el número de frames esperado.")
+
+            key_points.append(np.array(lips_points_labios(frame)))
+
+    # Liberar recursos de OpenCV
+    cap.release()
+    print("Procesamiento completado.")
+
+    # Convertir la lista en un np.array estructurado
+    return (np.array(labels),labels_key_points)
+    
+#############################################################
+# Guardar leer Data_Set Refinado
+
+def guardar_entrenamiento(labels, arrays, nombre_archivo):
+    """
+    Guarda las etiquetas y los arrays multidimensionales en un archivo de texto,
+    agregándolos al final del archivo si ya existe.
+    
+    Args:
+    labels (list): Lista de etiquetas.
+    arrays (list): Lista de arrays de NumPy multidimensionales.
+    nombre_archivo (str): Nombre del archivo donde se guardarán los datos.
+    """
+    try:
+        with open(nombre_archivo, 'a') as f:  # Modo de adición ('a')
+            for label, arr in zip(labels, arrays):
+                f.write(f"{label}\n")  # Escribir la etiqueta
+                np.savetxt(f, arr, delimiter=' ', fmt='%.6g')  # Guardar el array
+                f.write("\n#####\n")  # Separador entre bloques
+    except Exception as e:
+        print(f"Error al guardar los datos: {e}")
+        
+        
+# Función para leer etiquetas y arrays desde un archivo
+def leer_entrenamiento(nombre_archivo):
+    """
+    Lee las etiquetas y los arrays multidimensionales desde un archivo de texto.
+    
+    Args:
+    nombre_archivo (str): Nombre del archivo desde donde se leerán los datos.
+    
+    Returns:
+    tuple:
+        - labels (list): Lista de etiquetas.
+        - arrays (list): Lista de arrays de NumPy multidimensionales.
+    """
+    labels = []
+    arrays = []
+    try:
+        with open(nombre_archivo, 'r') as f:
+            while True:
+                label = f.readline().strip()  # Leer la etiqueta
+                if not label:  # Si no hay más etiquetas, terminar
+                    break
+                arr = []
+                while True:
+                    line = f.readline().strip()
+                    if line == '#####':  # Fin del bloque de array
+                        break
+                    if line:  # Evitar líneas vacías
+                        arr.append(list(map(float, line.split())))  # Convertir a flotantes
+                if arr:  # Verificar que el array no esté vacío
+                    arr = np.array(arr)  # Convertir la lista de listas en un array de NumPy
+                else:
+                    arr = np.empty((0, 0))  # Array vacío si no hay datos
+                labels.append(label)
+                arrays.append(arr)
+    except Exception as e:
+        print(f"Error al leer los datos: {e}")
+
+    return labels, arrays 
+    
+#####################################################################################################################
+# Ejecucion expetimental, estudio de la varianza de frame y treshold
 
 def procesar_video(ruta_video):
     historial_diferencias = []
@@ -233,24 +305,6 @@ def procesar_video(ruta_video):
                 dibujar_labios(lips_points,imagen_rotada)
                 frames_sin_omitir += 1
 
-        """
-        # Calcular la diferencia entre los cuadros
-        if lips_points_anterior.size != 0:
-            diferencia_entre_frames = diferencia_frame(lips_points_anterior, lips_points_normalizados)
-            diferencia_entre_frames[ indice_igual > diferencia_entre_frames ] = 0
-            historial_suma_diferencias.append(diferencia_entre_frames.sum())
-            error_minimo = indice_igual * lips_points_normalizados.size
-            frames_totales += 1   
-    
-            if diferencia_entre_frames.sum() > error_minimo:
-                frames_sin_omitir += 1
-                dibujar_labios(lips_points,imagen_rotada)
-            
-            for i in range(len(diferencia_entre_frames)):
-                for diferencia in diferencia_entre_frames[i]:
-                    historial_diferencias_por_dimension[i].append(diferencia)
-        """
-
         # Almacenar puntos históricos
         historial_puntos.append(lips_points_normalizados.sum(axis=1))
         lips_points_anterior = lips_points
@@ -273,54 +327,10 @@ def procesar_video(ruta_video):
     # Crear las gráficas con los datos recolectados
     #crear_grafica(historial_puntos)
     #crear_grafica(historial_suma_diferencias)
-
-def tiempo_real():
-    historial_diferencias = []
-    historial_puntos = []
-    lips_points_anterior = np.empty(0)
-    while True:
-        
-        # Capturar el frame de la cámara
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        # Convertir a escala de grises
-        #gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        lips_points = lips_points_labios(frame)
-        if len(lips_points) != 12:
-            break
     
-        angulo = angulo_boca(lips_points[0], lips_points[5])
-        imagen_rotada = rotar_imagen_angulo_0(frame, angulo, lips_points[0], lips_points[5])
-        
-        lips_points = normalize_keypoints(lips_points_labios(imagen_rotada))
-        
-        #lips_points = lips_points_labios(imagen_rotada)
-        
-        #print(normalize_keypoints(lips_points))
-        print(lips_points)
-        
-        if lips_points_anterior.size != 0:
-            diferencia_entre_frames = diferencia_frame(lips_points_anterior,lips_points)
-            historial_diferencias.append(diferencia_entre_frames.sum())
-            
-        # Romper el bucle si se presiona la tecla 'q'
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break 
-        
-        historial_puntos.append(lips_points.sum(axis=1))
-        
-        lips_points_anterior = lips_points
-        
-    #crear_grafica(historial_puntos)   
+#####################################################################################################################
+# Ejecucion expetimental, estudio de la varianza de frame y treshold
     
-    crear_grafica(historial_diferencias)
-    grafica_histograma(historial_diferencias)
-    
-    print(np.array(historial_diferencias))
-        
 # Ejemplo de uso
 ruta_video_hola_lento = r"Nuevo_codigo\Videos\lento_buenos_dias.mp4"
 ruta_video_hola_rapido = r"Nuevo_codigo\Videos\rapido_buenos_dias.mp4"

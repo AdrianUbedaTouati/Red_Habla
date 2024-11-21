@@ -1,0 +1,261 @@
+import cv2
+import dlib
+import math
+import time
+import os
+
+import matplotlib.pyplot as plt
+
+import numpy as np
+from PIL import Image
+
+FIN_BLOQUE = "################################################################################"
+FIN_ELEMENTO = "########"
+
+# Cargar el detector de caras y el predictor de puntos clave de Dlib
+detector = dlib.get_frontal_face_detector()
+predictor = dlib.shape_predictor("D:\Escritorio\Master\PrimerCuatri\EXTRACTION_DE_DONNEES\Red_Habla\shape_predictor_68_face_landmarks.dat")
+
+#key_points_interesantes = [48, 49, 50, 52, 53, 54 , 55, 56, 58, 59, 62, 66]
+key_points_interesantes = [48, 49, 50, 51, 52, 53, 54 , 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67]
+
+# Iniciar la captura de video
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FPS, 60)
+
+threshold = 1 # Umbral para detectar cambios significativos en los labios
+
+#############################################################
+# Extraccion de datos
+
+def lips_points_labios(imagen):
+    lips_points = []
+
+    # Detectar caras
+    faces = detector(imagen)
+
+    # Para cada cara detectada, predecir los puntos clave
+    for face in faces:
+        landmarks = predictor(imagen, face)
+
+        lips_points = []
+
+        for n in key_points_interesantes:  # Los índices de los puntos de los labios en el modelo de 68 puntos
+            x = landmarks.part(n).x
+            y = landmarks.part(n).y
+            lips_points.append((x, y))
+            
+        break
+
+    return np.array(lips_points)
+
+def angulo_boca(comisura_labio_izq, comisura_labio_der):
+    dx = comisura_labio_der[0] - comisura_labio_izq[0]
+    dy = comisura_labio_der[1] - comisura_labio_izq[1]
+
+    # Calcula el ángulo en radianes
+    angulo_radianes = math.atan2(dy, dx)
+
+    # Convierte el ángulo a grados
+    angulo_grados = math.degrees(angulo_radianes)
+
+    return angulo_grados
+
+def rotar_imagen_angulo_0(imagen,angulo,point1,point2):
+    centro_punto_D1 = (point1[0]+point2[0])/2
+    centro_punto_D2 = (point1[1]+point2[1])/2
+    #center = (int((point1[0]+point2[0])//2),int((point1[1]+point2[1])//2))
+    centro = (centro_punto_D1,centro_punto_D2)
+    rotation_matrix = cv2.getRotationMatrix2D(centro, angulo, 1.0)
+    imagen_rotada = cv2.warpAffine(imagen, rotation_matrix, (imagen.shape[1], imagen.shape[0]))
+    return imagen_rotada
+
+#############################################################
+# Normalizacion
+
+def normalize_keypoints(all_lips_points):
+    all_lips_points = np.array(all_lips_points)
+    min_vals = all_lips_points.min(axis=0)
+    max_vals = all_lips_points.max(axis=0)
+    normalized_points = (all_lips_points - min_vals) / (max_vals - min_vals)
+    return normalized_points
+
+
+#####################################################################################################################
+# Manejo DataSet
+
+#############################################################
+# Extraer Caracteristicas 
+
+def split_video_to_labels_and_keypoints(video_path, intervals_file):
+    # Leer el archivo de intervalos
+    with open(intervals_file, 'r') as file:
+        lines = file.readlines()
+
+    # Cargar el video
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: No se pudo abrir el video {video_path}")
+        raise Exception("El video no se ha podido abrir correctamente")
+
+    # Lista para almacenar los datos estructurados
+    labels = []
+    labels_key_points = []
+    
+    antiguo_label = None
+
+    for line in lines:
+        start_frame, end_frame, label = line.strip().split()
+        start_frame, end_frame = math.ceil(int(start_frame) / 1000), math.ceil(int(end_frame) / 1000)
+
+        # Establecer la posición inicial del frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+        #print(f"Procesando frames para la etiqueta '{label}' desde el frame {start_frame} hasta {end_frame}...")
+        
+        if antiguo_label != label:
+            
+            #Cambio sin reconocimiento de keypoints
+            if antiguo_label != None and np.any(np.array(key_points) == None):
+                labels.pop()
+            elif antiguo_label != None:
+                labels_key_points.append(np.array(key_points))
+                
+            labels.append(label)
+            key_points = []
+            antiguo_label = label
+            
+        # Recorrer los frames del intervalo
+        for frame_num in range(start_frame, end_frame):
+            ret, frame = cap.read()
+            if not ret:
+                return (None,None)
+            
+            kp = lips_points_labios(frame)
+            
+            if not( np.any(np.array(kp) == None) or kp.size == 0):
+                key_points.append(np.array(normalize_keypoints(kp)))
+
+    # Liberar recursos de OpenCV
+    cap.release()
+    #print("Procesamiento completado.")
+
+    # Convertir la lista en un np.array estructurado
+    return (np.array(labels),labels_key_points)
+    
+#############################################################
+# Guardar leer Data_Set Refinado
+
+def guardar_entrenamiento(labels, arrays, nombre_archivo):
+    """
+    Guarda las etiquetas y los arrays multidimensionales en un archivo de texto,
+    agregándolos al final del archivo si ya existe.
+    
+    Args:
+    labels (list): Lista de etiquetas.
+    arrays (list): Lista de arrays de NumPy multidimensionales.
+    nombre_archivo (str): Nombre del archivo donde se guardarán los datos.
+    """
+    try:
+        with open(nombre_archivo, 'a') as f:  # Modo de adición ('a')
+            for label, arr in zip(labels, arrays):
+                f.write(f"{label}\n")  # Escribir la etiqueta
+                for elm in arr:
+                    np.savetxt(f, elm, delimiter=' ', fmt='%.6g')  # Guardar el array
+                    f.write(f"{FIN_ELEMENTO}\n")
+                f.write(f"\n{FIN_BLOQUE}\n")  # Separador entre bloques
+    except Exception as e:
+        raise Exception(f"Error al guardar los datos: {e}")
+        
+        
+# Función para leer etiquetas y arrays desde un archivo
+def leer_entrenamiento(nombre_archivo):
+    """
+    Lee las etiquetas y los arrays multidimensionales desde un archivo de texto.
+    
+    Args:
+    nombre_archivo (str): Nombre del archivo desde donde se leerán los datos.
+    
+    Returns:
+    tuple:
+        - labels (list): Lista de etiquetas.
+        - arrays (list): Lista de arrays de NumPy multidimensionales.
+    """
+    labels = []
+    arrays = []
+    try:
+        with open(nombre_archivo, 'r') as f:
+            while True:
+                label = f.readline().strip()  # Leer la etiqueta
+                if not label:  # Si no hay más etiquetas, terminar
+                    break
+                arr = []
+                while True:
+                    line = f.readline().strip()
+                    if line == FIN_BLOQUE:  # Fin del bloque de array
+                        break
+                    if line:  # Evitar líneas vacías
+                        arr.append(list(map(float, line.split())))  # Convertir a flotantes
+                if arr:  # Verificar que el array no esté vacío
+                    arr = np.array(arr)  # Convertir la lista de listas en un array de NumPy
+                else:
+                    arr = np.empty((0, 0))  # Array vacío si no hay datos
+                labels.append(label)
+                arrays.append(arr)
+    except Exception as e:
+        print(f"Error al leer los datos: {e}")
+
+    return labels, arrays 
+
+def refinas_base_de_datos():
+    archivo_refinado = r"DataSetRefinada\s1.txt"
+    try:
+        os.remove(archivo_refinado)
+    except:
+        pass
+    # Especifica la carpeta que quieres listar
+    folder_path_ali = r'DataSet\alignments\alignments\s1\\'
+    folder_path_vid = r'DataSet\s1\s1\\'
+
+    # Lista los archivos y directorios en la carpeta
+    alis = os.listdir(folder_path_ali)
+    vids = os.listdir(folder_path_vid)
+    
+    alis = [folder_path_ali + file for file in alis]
+    vids = [folder_path_vid + file for file in vids]
+    
+    contador = 0
+    num_archivos = len(alis)
+    
+    for i in range(len(alis)):
+        contador += 1
+        print(f"Procesando {contador} de {num_archivos}")
+        labels, arrays = split_video_to_labels_and_keypoints(vids[i],alis[i])
+        if labels is None:
+            print("Error al cargar el frame, pasando de video")
+        else:
+            guardar_entrenamiento(labels, arrays, archivo_refinado)
+            print("Video bien guardado")
+        
+
+    print("FINNN")
+    
+if __name__ == "__main__":
+    # Datos de ejemplo: etiquetas y arrays multidimensionales
+    labels = ['label3', 'label4']
+    arrays = [
+        np.array([[13, 14, 15], [16, 17, 18]]),  # Otro array 2D
+        np.array([[19.1, 20.2], [21.3, 22.4]])  # Otro array 2D con flotantes
+    ]
+
+    # Guardar los nuevos datos al final del archivo
+    guardar_entrenamiento(labels, arrays, 'entrenamiento_multidimensional.txt')
+
+    # Leer los datos desde el archivo
+    etiquetas, arrays_leidos = leer_entrenamiento('entrenamiento_multidimensional.txt')
+
+    # Mostrar los datos leídos
+    for etiqueta, array in zip(etiquetas, arrays_leidos):
+        print(f"Etiqueta: {etiqueta}")
+        print(f"Array:\n{array}")
+        print("#####")

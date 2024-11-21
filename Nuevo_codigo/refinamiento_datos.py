@@ -1,59 +1,67 @@
+import cv2
 import os
-import subprocess
+import math
+import numpy as np
 
-def dividir_video_por_segmentos(video_path, texto_path, output_folder):
+def lips_points_labios(frame):
     """
-    Divide un video en segmentos según un archivo de texto que especifica los tiempos y nombres de los segmentos.
-
-    Args:
-        video_path (str): Ruta al archivo de video.
-        texto_path (str): Ruta al archivo de texto con los segmentos (inicio, fin, etiqueta).
-        output_folder (str): Carpeta donde se guardarán los segmentos generados.
-
-    Returns:
-        list: Lista de rutas de los segmentos generados.
+    Función ficticia que simula la detección de puntos clave en los labios.
+    Implementa esta función según las necesidades reales de procesamiento.
     """
-    # Crear la carpeta de salida si no existe
-    os.makedirs(output_folder, exist_ok=True)
-    
-    # Leer el fichero de texto
-    with open(texto_path, 'r') as file:
+    # Simulando algunos puntos clave (reemplazar con detección real)
+    return np.random.rand(20, 2)  # 20 puntos clave con coordenadas x, y
+
+def split_video_to_labels_and_keypoints(video_path, intervals_file):
+    # Leer el archivo de intervalos
+    with open(intervals_file, 'r') as file:
         lines = file.readlines()
-    
-    segment_paths = []
-    
-    for line in lines:
-        try:
-            start, end, label = line.strip().split()
-            start_time = int(start) / 1000  # Convertir a segundos
-            end_time = int(end) / 1000     # Convertir a segundos
-            
-            # Ruta del segmento
-            output_path = os.path.join(output_folder, f"{label}.mp4")
-            
-            # Comando FFmpeg para extraer el segmento
-            command = [
-                "ffmpeg",
-                "-i", video_path,
-                "-ss", str(start_time),
-                "-to", str(end_time),
-                "-c", "copy",  # Copiar los codecs (más rápido)
-                output_path
-            ]
-            
-            # Ejecutar el comando
-            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            segment_paths.append(output_path)
-        
-        except ValueError:
-            print(f"Error al procesar la línea: {line.strip()}")
 
-    return segment_paths
+    # Cargar el video
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: No se pudo abrir el video {video_path}")
+        raise Exception("El video no se ha podido abrir correctamente")
+
+    # Lista para almacenar los datos estructurados
+    labels = []
+    labels_key_points = []
+    
+    antiguo_label = None
+
+    for line in lines:
+        start_frame, end_frame, label = line.strip().split()
+        start_frame, end_frame = math.ceil(int(start_frame) / 1000), math.ceil(int(end_frame) / 1000)
+
+        # Establecer la posición inicial del frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+        print(f"Procesando frames para la etiqueta '{label}' desde el frame {start_frame} hasta {end_frame}...")
+        
+        if antiguo_label != label:
+            labels.append(label)
+            if antiguo_label != None:
+                labels_key_points.append(np.array(key_points))
+            key_points = []
+            antiguo_label = label
+            
+        # Recorrer los frames del intervalo
+        for frame_num in range(start_frame, end_frame):
+            ret, frame = cap.read()
+            if not ret:
+                raise Exception(f"El video {video_path} no tiene el número de frames esperado.")
+
+            key_points.append(np.array(lips_points_labios(frame)))
+
+    # Liberar recursos de OpenCV
+    cap.release()
+    print("Procesamiento completado.")
+
+    # Convertir la lista en un np.array estructurado
+    return (np.array(labels),labels_key_points)
 
 # Ejemplo de uso
-video = r"DataSet\s1\s1\bbaf2n.mpg"
-texto = r"DataSet\alignments\alignments\s1\bbaf2n.align"
-salida = "Lips_Points_DataSet"
+video_path = r"DataSet\s1\s1\bbaf2n.mpg"
+intervals_file = r"DataSet\alignments\alignments\s1\bbaf2n.align"
+output_dir = r"Lips_Points_refinado"
 
-segmentos_generados = dividir_video_por_segmentos(video, texto, salida)
-print("Segmentos generados:", segmentos_generados)
+print(split_video_to_labels_and_keypoints(video_path, intervals_file))
