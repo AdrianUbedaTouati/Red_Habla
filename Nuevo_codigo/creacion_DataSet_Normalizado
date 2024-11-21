@@ -4,6 +4,20 @@ import math
 import time
 import os
 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+import tensorflow as tf
+print(tf.executing_eagerly())
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import TimeDistributed, Conv1D, MaxPooling1D, Flatten, LSTM, Dropout, BatchNormalization, Dense, Masking
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
+
+
+TF_ENABLE_ONEDNN_OPTS=0
+
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -73,12 +87,86 @@ def rotar_imagen_angulo_0(imagen,angulo,point1,point2):
 #############################################################
 # Normalizacion
 
+"""
 def normalize_keypoints(all_lips_points):
     all_lips_points = np.array(all_lips_points)
     min_vals = all_lips_points.min(axis=0)
     max_vals = all_lips_points.max(axis=0)
     normalized_points = (all_lips_points - min_vals) / (max_vals - min_vals)
     return normalized_points
+"""
+
+def normalize_keypoints_frame(points):
+    """
+    Normaliza un conjunto de keypoints en un frame centrando por el centroide
+    y escalando por la distancia máxima desde el centroide.
+    
+    Args:
+    - points (numpy array): Array de tamaño (K, 2), donde:
+        K: Número de keypoints en un frame.
+        2: Coordenadas (x, y).
+    
+    Returns:
+    - normalized_points (numpy array): Keypoints normalizados en el rango [-1, 1].
+    """
+    points = np.array(points)  # Asegurar que sea un array de NumPy
+
+    # 1. Centrar por el centroide
+    centroid = points.mean(axis=0)  # Centroide del frame
+    centered_points = points - centroid
+
+    # 2. Escalar por la distancia máxima desde el centroide
+    max_distance = np.linalg.norm(centered_points, axis=1).max()  # Distancia máxima al centroide
+    if max_distance == 0:
+        max_distance = 1e-8  # Evitar divisiones por cero
+    
+    scaled_points = centered_points / max_distance  # Normalizar al rango [-1, 1]
+    
+    return scaled_points
+
+#############################################################
+# Graficas
+def crear_grafica(historial):
+    plt.plot(historial, marker='o', linestyle='-', color='b', label='Cambios entre frames')
+
+    # Personalización de la gráfica
+    
+    plt.xlabel("Índice del Frame")
+    plt.ylabel("Cambio")
+    plt.axhline(0, color='gray', linestyle='--', linewidth=0.8)  # Línea en y=0
+    plt.grid(alpha=0.3)
+    #plt.legend()
+    
+    if len(key_points_interesantes) <= 12:
+        plt.title("Cambios entre Frames 12 Key Points")
+        ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\12_key_points\\"
+    else:  
+        plt.title("Cambios entre Frames 24 Key Points")
+        ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\24_key_points\\"
+    
+    plt.savefig(ruta_graficas + os.path.basename(ruta_video).replace("mp4","png"), dpi=300) 
+
+    # Mostrar la gráfica
+    plt.show()
+    
+def grafica_histograma(historial):
+    # Crear un histograma
+    plt.figure(figsize=(10, 5))
+    plt.hist(historial, bins=len(historial), color='blue', alpha=0.7, edgecolor='black')
+    
+    # Etiquetas y título del histograma
+    plt.xlabel("Valores")
+    plt.ylabel("Frecuencia")
+    
+    if len(key_points_interesantes) <= 12:
+        plt.title("Histograma Cambios entre Frames: 12 Key Points")
+        ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\12_key_points\\"
+    else:  
+        plt.title("Histograma Cambios entre Frames: 24 Key Points")
+        ruta_graficas = r"Nuevo_codigo\Graficas_movimientos_entre_frames\24_key_points\\"
+    
+    # Mostrar el histograma
+    plt.show()
 
 
 #####################################################################################################################
@@ -134,7 +222,7 @@ def split_video_to_labels_and_keypoints(video_path, intervals_file):
             kp = lips_points_labios(frame)
             
             if not( np.any(np.array(kp) == None) or kp.size == 0):
-                key_points.append(np.array(normalize_keypoints(kp)))
+                key_points.append(np.array(normalize_keypoints_frame(kp)))
 
     # Liberar recursos de OpenCV
     cap.release()
@@ -168,10 +256,10 @@ def guardar_entrenamiento(labels, arrays, nombre_archivo):
         raise Exception(f"Error al guardar los datos: {e}")
         
         
-# Función para leer etiquetas y arrays desde un archivo
 def leer_entrenamiento(nombre_archivo):
     """
-    Lee las etiquetas y los arrays multidimensionales desde un archivo de texto.
+    Lee las etiquetas y los arrays multidimensionales desde un archivo de texto,
+    considerando los separadores FIN_ELEMENTO y FIN_BLOQUE.
     
     Args:
     nombre_archivo (str): Nombre del archivo desde donde se leerán los datos.
@@ -190,22 +278,28 @@ def leer_entrenamiento(nombre_archivo):
                 if not label:  # Si no hay más etiquetas, terminar
                     break
                 arr = []
+                temp = []  # Para almacenar el sub-array actual
                 while True:
                     line = f.readline().strip()
-                    if line == FIN_BLOQUE:  # Fin del bloque de array
+                    if line == FIN_BLOQUE:  # Fin del bloque
+                        if temp:  # Guardar el último sub-array si existe
+                            arr.append(np.array(temp))
                         break
-                    if line:  # Evitar líneas vacías
-                        arr.append(list(map(float, line.split())))  # Convertir a flotantes
-                if arr:  # Verificar que el array no esté vacío
-                    arr = np.array(arr)  # Convertir la lista de listas en un array de NumPy
+                    elif line == FIN_ELEMENTO:  # Fin de un sub-array
+                        if temp:  # Guardar el sub-array si existe
+                            arr.append(np.array(temp))
+                        temp = []  # Reiniciar el sub-array temporal
+                    elif line:  # Evitar líneas vacías y procesar contenido
+                        temp.append(list(map(float, line.split())))  # Convertir a flotantes
+                if arr:
+                    labels.append(label)
+                    arrays.append(arr)  
                 else:
-                    arr = np.empty((0, 0))  # Array vacío si no hay datos
-                labels.append(label)
-                arrays.append(arr)
+                    print(f"Se ha recogido la la palabra {label}")
     except Exception as e:
         print(f"Error al leer los datos: {e}")
-
-    return labels, arrays 
+    
+    return np.array(labels), arrays
 
 def refinas_base_de_datos():
     archivo_refinado = r"DataSetRefinada\s1.txt"
@@ -240,22 +334,160 @@ def refinas_base_de_datos():
 
     print("FINNN")
     
+def cargamos_datos():
+    archivo_refinado = r"DataSetRefinada\s1.txt"
+    labels, arrays = leer_entrenamiento(archivo_refinado)
+    print(labels[0])
+    print(len(arrays[0]))
+    #grafica_histograma(labels)
+    
+#################
+# Estructura red
+
+def calcular_limite_longitud(secuencias):
+    """
+    Calcula el límite de longitud para secuencias basado en el promedio + 2 desviaciones estándar.
+    
+    Args:
+        secuencias (list of list): Lista de secuencias, donde cada secuencia es una lista de puntos clave o frames.
+    
+    Returns:
+        int: Límite recomendado para la longitud de las secuencias.
+    """
+    longitudes = [len(seq) for seq in secuencias]
+    promedio = np.mean(longitudes)
+    desviacion_estandar = np.std(longitudes)
+    limite = int(promedio + 2 * desviacion_estandar)
+    return limite
+
+def aplicar_padding(secuencias, longitud_objetivo):
+    """
+    Aplica padding a todas las secuencias para que tengan la misma longitud.
+    
+    Args:
+        secuencias (list of list): Lista de secuencias, donde cada secuencia es una lista de puntos clave o frames.
+        longitud_objetivo (int): Longitud fija deseada para todas las secuencias.
+    
+    Returns:
+        np.array: Matriz con todas las secuencias rellenadas con padding (ceros).
+    """
+    secuencias_padded = []
+    for secuencia in secuencias:
+        secuencia = np.array(secuencia)
+        # Si la secuencia es más corta que la longitud objetivo, agrega ceros al final
+        if len(secuencia) < longitud_objetivo:
+            padding = np.zeros(shape=(longitud_objetivo - len(secuencia),20,2)) 
+            #print(secuencia.shape)
+            
+            secuencia_padded = np.concatenate((secuencia,padding))
+            
+        else:
+            secuencia_padded = secuencia
+        secuencias_padded.append(secuencia_padded)
+    
+    return np.array(secuencias_padded)
+
+    
+#####################################################################################################################
+# Ejecucion expetimental, estudio de la varianza de frame y treshold
+    
 if __name__ == "__main__":
-    # Datos de ejemplo: etiquetas y arrays multidimensionales
-    labels = ['label3', 'label4']
-    arrays = [
-        np.array([[13, 14, 15], [16, 17, 18]]),  # Otro array 2D
-        np.array([[19.1, 20.2], [21.3, 22.4]])  # Otro array 2D con flotantes
-    ]
+    archivo_refinado = r"DataSetRefinada\s1.txt"
+    labels, arrays = leer_entrenamiento(archivo_refinado)
+    
+    # Define los hiperparámetros
+    input_dim = len(key_points_interesantes)  # Número de keypoints por frame (ejemplo)
+    longitud = calcular_limite_longitud(arrays)
+    longitudes = [len(seq) for seq in arrays]
+    
+    classes = np.unique(labels).size 
+    arrays_threshold = []
+    labels_threshold = []
+    
+    for i in range(len(arrays)):
+        if len(arrays[i])<=longitud:
+            arrays_threshold.append(arrays[i])
+            labels_threshold.append(labels[i])
+              
+    num_classes = np.unique(labels).size      # Número de palabras a reconocer
+    
+    time_steps = longitud  # Número de frames en cada secuencia
+    
+    # Crear un mapeo de etiquetas únicas a enteros
+    unique_labels = np.unique(labels_threshold)
+    label_to_int = {label: idx for idx, label in enumerate(unique_labels)}
 
-    # Guardar los nuevos datos al final del archivo
-    guardar_entrenamiento(labels, arrays, 'entrenamiento_multidimensional.txt')
+    # Convertir las etiquetas usando el mapeo
+    labels_threshold_int = [label_to_int[label] for label in labels_threshold]
 
-    # Leer los datos desde el archivo
-    etiquetas, arrays_leidos = leer_entrenamiento('entrenamiento_multidimensional.txt')
+    y_train = to_categorical(labels_threshold_int, num_classes=num_classes)
+    
+    X_padding = aplicar_padding(arrays_threshold,longitud)
+    
+    # Dividir en conjuntos de entrenamiento y validación
+    X_train, X_val, y_train, y_val = train_test_split(X_padding, y_train, test_size=0.2, random_state=42)
 
-    # Mostrar los datos leídos
-    for etiqueta, array in zip(etiquetas, arrays_leidos):
-        print(f"Etiqueta: {etiqueta}")
-        print(f"Array:\n{array}")
-        print("#####")
+    model = Sequential([
+        # TimeDistributed para procesar las relaciones espaciales (keypoints)
+        TimeDistributed(Conv1D(filters=32, kernel_size=3, activation='relu'), input_shape=(15, 20, 2)),
+        TimeDistributed(MaxPooling1D(pool_size=2)),
+        TimeDistributed(Flatten()),  # Reduce las dimensiones a (15, features)
+        
+        # LSTM para capturar patrones temporales
+        LSTM(128, return_sequences=True),
+        Dropout(0.3),
+        BatchNormalization(),
+        LSTM(64),
+        Dropout(0.3),
+        BatchNormalization(),
+        
+        # Capa densa intermedia
+        Dense(64, activation='relu'),
+        Dropout(0.3),
+        
+        # Capa de salida para clasificación
+        Dense(num_classes, activation='softmax')
+    ])
+
+    # Compilación del modelo
+    model.compile(optimizer='adam',
+                loss='categorical_crossentropy',
+                metrics=['accuracy'])
+
+    # Mostrar resumen del modelo
+    model.summary()
+
+    # Entrenar el modelo
+    epochs = 150
+    batch_size = 32
+
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=epochs,
+        batch_size=batch_size
+    )
+
+    # Graficar resultados
+    plt.plot(history.history['accuracy'], label='Entrenamiento')
+    plt.plot(history.history['val_accuracy'], label='Validación')
+    plt.title('Precisión del modelo')
+    plt.xlabel('Época')
+    plt.ylabel('Precisión')
+    plt.legend()
+    plt.show()
+
+    plt.plot(history.history['loss'], label='Entrenamiento')
+    plt.plot(history.history['val_loss'], label='Validación')
+    plt.title('Pérdida del modelo')
+    plt.xlabel('Época')
+    plt.ylabel('Pérdida')
+    plt.legend()
+    plt.show()
+
+    # Evaluar el modelo
+    loss, accuracy = model.evaluate(X_val, y_val)
+    print(f"Pérdida: {loss}, Precisión: {accuracy}")
+
+    # Guardar el modelo
+    model.save('modelo_clasificador_lstm.h5')

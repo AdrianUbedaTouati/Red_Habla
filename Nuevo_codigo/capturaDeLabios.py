@@ -70,11 +70,11 @@ def rotar_imagen_angulo_0(imagen,angulo,point1,point2):
 #############################################################
 # Normalizacion
 
-def normalize_keypoints(all_lips_points):
-    all_lips_points = np.array(all_lips_points)
-    min_vals = all_lips_points.min(axis=0)
-    max_vals = all_lips_points.max(axis=0)
-    normalized_points = (all_lips_points - min_vals) / (max_vals - min_vals)
+def normalize_keypoints(frame_lips_points):
+    frame_lips_points = np.array(frame_lips_points)
+    min_vals = frame_lips_points.min(axis=0)
+    max_vals = frame_lips_points.max(axis=0)
+    normalized_points = (frame_lips_points - min_vals) / (max_vals - min_vals)
     return normalized_points
     
 

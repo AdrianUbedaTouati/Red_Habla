@@ -607,7 +607,6 @@ def GuardarValoresROCfichero(nombreModelo, resultadosROC):
 def cnn_model_images(input_shape, padding_value=0):
     input_image = Input(shape=input_shape, name='input_image')
 
-
     masked_image = TimeDistributed(Masking(mask_value=padding_value))(input_image)
 
     x = TimeDistributed(Conv2D(32, (3, 3), activation='relu', padding='same'))(masked_image)
@@ -621,7 +620,6 @@ def cnn_model_images(input_shape, padding_value=0):
     x = TimeDistributed(Flatten())(x)
 
     return Model(inputs=input_image, outputs=x, name='image_cnn')
-
 
 def cnn_model_keypoints(input_shape, padding_value=0):
     input_keypoints = Input(shape=input_shape, name='input_keypoints')
